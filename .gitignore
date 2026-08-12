@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Hugging Face / local caches
+.hf_cache/
+.cache/
+huggingface/
+transformers_cache/
+
+# Local model weights — keep large files out of Git
+models/**/*.safetensors
+models/**/*.bin
+models/**/*.pt
+models/**/*.pth
+
+# Keep model metadata/configuration tracked
+!models/**/config.json
+!models/**/generation_config.json
+!models/**/tokenizer.json
+!models/**/tokenizer_config.json
+!models/**/chat_template.jinja
+!models/**/recipe.yaml
+
+# Generated evaluation / benchmark outputs
+results/**/*.json
+results/**/*.txt
+results/**/*.log
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Python packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# CUDA / compiler caches
+.cuda/
+.nv/
+eval/
+data/
+reports/
