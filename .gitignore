@@ -67,3 +67,5 @@ dist/
 eval/
 data/
 reports/
+results/
+models/
