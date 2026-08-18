@@ -1,25 +1,45 @@
 #!/usr/bin/env python3
 """
-Curate and merge Trendyol + ShareGPT cybersecurity datasets for LoRA SFT.
+Merge cleaned ShareGPT + Trendyol cybersecurity datasets and create
+a fresh train/validation split from the complete combined dataset.
 
-Design goals
-------------
-1. Preserve broad cybersecurity diversity, including offensive-security concepts.
-2. Remove structural/data-quality problems.
-3. Remove obvious generic-programming noise.
-4. Remove rows whose primary purpose is operationally enabling attack/evasion,
-   credential theft, persistence, phishing, or exfiltration.
-5. Remove the huge ShareGPT meta-system prompt so the model does not learn
-   "always output Python / reveal reasoning" behavior.
-6. Normalize both sources to:
-       {"system": ..., "user": ..., "assistant": ...}
-7. Deduplicate on normalized user+assistant text.
-8. Produce a train/validation split with reproducible shuffling.
+Input
+-----
+ShareGPT (already cleaned):
+    data/sharegpt_balanced/train.jsonl
+    data/sharegpt_balanced/validation.jsonl
 
-This is intentionally NOT a blanket "offensive content" filter. Conceptual
-offensive-security, vulnerability analysis, exploit explanations, secure
-coding, detection, and defensive material are retained when they are useful
-training examples.
+Trendyol:
+    Trendyol/Trendyol-Cybersecurity-Instruction-Tuning-Dataset
+
+Output
+------
+data/final/train.jsonl
+data/final/validation.jsonl
+data/final/metadata.json
+
+Pipeline
+--------
+1. Load ShareGPT train.
+2. Load ShareGPT validation.
+3. Combine both ShareGPT files into one pool.
+4. Normalize ShareGPT rows.
+5. Load Trendyol.
+6. Normalize Trendyol rows.
+7. Combine ShareGPT + Trendyol.
+8. Remove exact duplicates across the complete dataset.
+9. Shuffle reproducibly.
+10. Create a fresh train/validation split.
+11. Verify no train/validation leakage.
+12. Write final datasets and metadata.
+
+Notes
+-----
+- ShareGPT is assumed to already be cleaned.
+- No cybersecurity topic filtering is performed here.
+- No generic-programming filtering is performed here.
+- No offensive-security filtering is performed here.
+- Only structural validation and exact deduplication are performed.
 """
 
 from __future__ import annotations
@@ -33,442 +53,575 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from datasets import load_dataset, Dataset, DatasetDict
+from datasets import DatasetDict, load_dataset
 
 
-# ---------------------------------------------------------------------------
+# ============================================================================
 # Configuration
-# ---------------------------------------------------------------------------
-TRENDYOL = "Trendyol/Trendyol-Cybersecurity-Instruction-Tuning-Dataset"
-SHAREGPT = "ChaoticNeutrals/Cybersecurity-ShareGPT"
+# ============================================================================
 
-SHAREGPT_META_PROMPT_RE = re.compile(
-    r"Answer the Question in a logical, step-by-step manner.*?"
-    r"Your answer should only return Python code.*?",
-    re.I | re.S,
+TRENDYOL_DATASET = (
+    "Trendyol/Trendyol-Cybersecurity-Instruction-Tuning-Dataset"
 )
 
-GENERIC_PROGRAMMING_PATTERNS = [
-    r"\bhello world\b",
-    r"\bsort (?:a|an)? ?(?:list|array)\b",
-    r"\bcalculator\b",
-    r"\bhangman\b",
-    r"\btic[- ]?tac[- ]?toe\b",
-    r"\bweb scraper\b",
-    r"\bweather app\b",
-    r"\bto[- ]?do app\b",
-    r"\bflask app\b",
-    r"\bdjango app\b",
-    r"\brest api\b",
-    r"\bsimple chatbot\b",
-]
+SHAREGPT_TRAIN_PATH = Path(
+    "data/sharegpt_balanced/train.jsonl"
+)
 
-# These patterns are deliberately narrow. They target examples whose requested
-# capability is directly operational rather than deleting an entire topic.
-OPERATIONAL_RISK_PATTERNS = [
-    # Credential theft / credential material
-    r"\bcredential dumping\b",
-    r"\bsteal(?:ing)? credentials\b",
-    r"\bextract stored (?:windows )?credentials\b",
-    r"\bpassword dumping\b",
-    r"\bpassword hashes?\b.*\bcrack\b",
-    r"\bpass[- ]the[- ]hash\b",
-
-    # Persistence / malware deployment
-    r"\bcreate\b.*\brootkit\b",
-    r"\bmalware\b.*\bpersistence\b",
-    r"\bpersist(?:ence|ent)\b.*\bregistry\b",
-    r"\bpolymorphic\b.*\b(evade|bypass)\b",
-    r"\bsandbox evasion\b",
-
-    # Evasion
-    r"\bevad(?:e|ing|es)\b.*\b(?:ids|ips|edr|av|antivirus|detection)\b",
-    r"\bavoid detection\b",
-    r"\bstealthy\b.*\bscan\b",
-    r"\bblend in\b.*\btraffic\b",
-
-    # Phishing / social engineering execution
-    r"\bspear[- ]phish(?:ing)?\b.*\bsend\b",
-    r"\bphishing email\b.*\b(?:send|smtp)\b",
-    r"\btrack(?:ing)? pixel\b.*\bphish",
-    r"\bcredential harvesting\b",
-
-    # Exfiltration / covert channels
-    r"\bdata exfiltration\b.*\b(?:dns|steganography|covert channel)\b",
-    r"\bdns tunneling\b.*\b(?:exfiltrat|transmit stolen)\b",
-    r"\bcovert channel\b.*\bexfiltrat",
-
-    # Reverse shells / direct payload delivery
-    r"\breverse shell\b.*\b(?:connect|payload|script)\b",
-    r"\bdownload(?:er)?\b.*\bexecute\b.*\bpayload\b",
-]
-
-# Keep these concepts even when the row discusses offensive security.
-DEFENSIVE_OVERRIDE_PATTERNS = [
-    r"\bhow to detect\b",
-    r"\bdetection\b",
-    r"\bmitre attack\b",
-    r"\bnist\b",
-    r"\bsiem\b",
-    r"\bedr\b",
-    r"\bincident response\b",
-    r"\bremediation\b",
-    r"\bhardening\b",
-    r"\bsecure coding\b",
-    r"\bmitigation\b",
-    r"\bdefensive\b",
-    r"\bblue team\b",
-    r"\bthreat hunting\b",
-]
+SHAREGPT_VALIDATION_PATH = Path(
+    "data/sharegpt_balanced/validation.jsonl"
+)
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+# ============================================================================
+# Text helpers
+# ============================================================================
 
 def clean_text(value: Any) -> str:
+    """
+    Minimal structural normalization.
+
+    This intentionally does not perform semantic/content filtering.
+    """
+
     if value is None:
         return ""
+
     text = str(value)
+
+    # Remove null bytes
     text = text.replace("\x00", " ")
+
+    # Normalize Windows/Mac line endings
     text = re.sub(r"\r\n?", "\n", text)
+
+    # Collapse spaces/tabs
     text = re.sub(r"[ \t]+", " ", text)
+
+    # Collapse excessive blank lines
     text = re.sub(r"\n{3,}", "\n\n", text)
+
     return text.strip()
 
 
-def normalize_for_hash(text: str) -> str:
-    text = clean_text(text).lower()
-    text = re.sub(r"\s+", " ", text)
-    return text
+# ============================================================================
+# Row normalization
+# ============================================================================
 
-
-def pair_hash(user: str, assistant: str) -> str:
-    payload = normalize_for_hash(user) + "\n<SEP>\n" + normalize_for_hash(assistant)
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
-
-
-def contains_any(text: str, patterns: list[str]) -> bool:
-    return any(re.search(p, text, re.I | re.S) for p in patterns)
-
-
-def looks_generic_programming(user: str, assistant: str) -> bool:
-    text = f"{user}\n{assistant}".lower()
-    if not contains_any(text, GENERIC_PROGRAMMING_PATTERNS):
-        return False
-
-    cyber_terms = [
-        "security", "cyber", "vulnerability", "attack", "malware",
-        "threat", "cve", "cwe", "authentication", "authorization",
-        "encryption", "tls", "network security", "incident", "siem",
-        "firewall", "ids", "ips", "edr", "secure coding", "exploit",
-    ]
-    return not any(term in text for term in cyber_terms)
-
-
-def operational_risk(user: str, assistant: str) -> bool:
-    user_text = clean_text(user)
-    assistant_text = clean_text(assistant)
-    text = f"{user_text}\n{assistant_text}"
-
-    if not contains_any(text, OPERATIONAL_RISK_PATTERNS):
-        return False
-
-    # Only retain a risky-looking example when the user's actual request
-    # is clearly defensive/analytical rather than asking to perform the attack.
-    defensive_user = contains_any(user_text, DEFENSIVE_OVERRIDE_PATTERNS)
-
-    # Strong operational indicators should never be rescued merely because
-    # defensive terminology appears somewhere in the prompt.
-    strong_operational_patterns = [
-        r"\bsteal(?:ing)? credentials\b",
-        r"\bcredential dumping\b",
-        r"\bpass[- ]the[- ]hash\b",
-        r"\breverse shell\b",
-        r"\brootkit\b",
-        r"\bcredential harvesting\b",
-        r"\bdns tunneling\b",
-        r"\bdata exfiltration\b",
-        r"\bpolymorphic\b.*\b(?:evade|bypass)\b",
-    ]
-
-    if contains_any(text, strong_operational_patterns):
-        return True
-
-    return not defensive_user
-
-def strip_sharegpt_system(system: str) -> str:
+def normalize_row(
+    row: dict[str, Any],
+    source: str,
+) -> dict[str, str] | None:
     """
-    Remove the repeated meta-instruction found in this ShareGPT source.
-    Preserve any unrelated system content if present.
+    Normalize a row to:
+
+        {
+            "system": "...",
+            "user": "...",
+            "assistant": "...",
+            "source": "..."
+        }
     """
-    system = clean_text(system)
-    if not system:
-        return ""
 
-    stripped = SHAREGPT_META_PROMPT_RE.sub("", system).strip()
-    # The source's system message is essentially the same meta prompt in the
-    # inspected examples. Do not carry it into SFT if it leaves no useful
-    # domain-specific instruction.
-    if len(stripped) < 20:
-        return ""
-    return stripped
-
-
-def extract_sharegpt_turns(conversation: Any) -> tuple[str, str, str] | None:
-    if isinstance(conversation, str):
-        try:
-            conversation = json.loads(conversation)
-        except json.JSONDecodeError:
-            return None
-
-    if not isinstance(conversation, list):
+    if not isinstance(row, dict):
         return None
 
-    system = ""
-    user = ""
-    assistant = ""
+    system = clean_text(row.get("system", ""))
+    user = clean_text(row.get("user", ""))
+    assistant = clean_text(row.get("assistant", ""))
 
-    # We only construct a single-turn SFT example. This avoids accidentally
-    # mixing multiple unrelated Q/A pairs in one training record.
-    pending_user = None
-
-    for turn in conversation:
-        if not isinstance(turn, dict):
-            continue
-
-        role = str(turn.get("from", turn.get("role", ""))).lower().strip()
-        value = clean_text(turn.get("value", turn.get("content", "")))
-
-        if not value:
-            continue
-
-        if role in {"system"} and not system:
-            system = value
-
-        elif role in {"human", "user"} and pending_user is None:
-            pending_user = value
-
-        elif role in {"gpt", "assistant", "model"} and pending_user is not None:
-            user = pending_user
-            assistant = value
-            break
-
-    if not user or not assistant:
+    if not user:
         return None
 
-    return strip_sharegpt_system(system), user, assistant
-
-
-def convert_trendyol(row: dict[str, Any]) -> tuple[str, str, str] | None:
-    system = clean_text(row.get("system"))
-    user = clean_text(row.get("user"))
-    assistant = clean_text(row.get("assistant"))
-
-    if not user or not assistant:
+    if not assistant:
         return None
 
-    return system, user, assistant
+    return {
+        "system": system,
+        "user": user,
+        "assistant": assistant,
+        "source": source,
+    }
 
 
-def basic_quality_ok(system: str, user: str, assistant: str) -> bool:
-    if not user or not assistant:
+def basic_quality_check(
+    row: dict[str, str],
+) -> bool:
+    """
+    Structural/data-quality validation only.
+    """
+
+    user = row["user"]
+    assistant = row["assistant"]
+
+    if not user.strip():
         return False
 
-    # Extremely short examples are unlikely to be useful SFT pairs.
-    if len(user) < 20:
+    if not assistant.strip():
         return False
 
-    if len(assistant) < 20:
+    # Reject exact user == assistant examples
+    if user.strip().lower() == assistant.strip().lower():
         return False
 
-    # Reject obviously broken records.
-    if user.lower() == assistant.lower():
-        return False
-
-    # Reject placeholder-only responses.
+    # Reject obvious placeholder answers
     placeholder_patterns = [
         r"^\s*pass\s*$",
         r"^\s*n/?a\s*$",
         r"^\s*todo\s*$",
         r"^\s*placeholder\s*$",
-        r"^\s*i don't know\.?\s*$",
     ]
 
-    if contains_any(assistant, placeholder_patterns):
-        return False
+    for pattern in placeholder_patterns:
+        if re.fullmatch(pattern, assistant, flags=re.IGNORECASE):
+            return False
 
     return True
 
 
-def categorize(text: str) -> str:
-    t = text.lower()
+# ============================================================================
+# Hashing / deduplication
+# ============================================================================
 
-    rules = [
-        ("network_security", ["network security", "tcp", "udp", "dns", "tls", "firewall", "packet"]),
-        ("web_security", ["xss", "csrf", "idor", "ssrf", "sql injection", "web application"]),
-        ("identity_security", ["active directory", "kerberos", "ldap", "oauth", "identity", "privilege"]),
-        ("malware_analysis", ["malware", "ransomware", "rootkit", "reverse engineering", "yara"]),
-        ("cryptography", ["cryptography", "encryption", "cipher", "hashing", "tls"]),
-        ("secure_coding", ["secure coding", "sanitization", "input validation", "secure software"]),
-        ("threat_intelligence", ["threat intelligence", "ioc", "indicator of compromise", "apt"]),
-        ("incident_response", ["incident response", "forensics", "triage", "containment"]),
-        ("cloud_security", ["aws", "azure", "gcp", "cloud security", "kubernetes"]),
-        ("offensive_security", ["penetration test", "red team", "exploit", "rop", "payload"]),
-        ("social_engineering", ["phishing", "social engineering", "pretexting"]),
+def normalize_for_hash(text: str) -> str:
+    text = clean_text(text).lower()
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
+def row_hash(row: dict[str, str]) -> str:
+    """
+    Hash system + user + assistant.
+
+    Source is intentionally excluded so that an identical example appearing
+    in ShareGPT and Trendyol is treated as a duplicate.
+    """
+
+    payload = (
+        normalize_for_hash(row["system"])
+        + "\n<SEP>\n"
+        + normalize_for_hash(row["user"])
+        + "\n<SEP>\n"
+        + normalize_for_hash(row["assistant"])
+    )
+
+    return hashlib.sha256(
+        payload.encode("utf-8")
+    ).hexdigest()
+
+
+def deduplicate_rows(
+    rows: list[dict[str, str]],
+) -> tuple[list[dict[str, str]], int]:
+
+    seen: set[str] = set()
+    unique_rows: list[dict[str, str]] = []
+    duplicates = 0
+
+    for row in rows:
+
+        key = row_hash(row)
+
+        if key in seen:
+            duplicates += 1
+            continue
+
+        seen.add(key)
+        unique_rows.append(row)
+
+    return unique_rows, duplicates
+
+
+# ============================================================================
+# Load local ShareGPT JSONL
+# ============================================================================
+
+def load_sharegpt_jsonl(
+    path: Path,
+    split_name: str,
+) -> tuple[list[dict[str, str]], Counter]:
+
+    if not path.exists():
+        raise FileNotFoundError(
+            f"ShareGPT file does not exist: {path}"
+        )
+
+    print()
+    print("=" * 80)
+    print(f"LOADING SHAREGPT {split_name.upper()}")
+    print("=" * 80)
+    print(f"Path: {path}")
+
+    dataset = load_dataset(
+        "json",
+        data_files=str(path),
+        split="train",
+    )
+
+    stats = Counter()
+    rows: list[dict[str, str]] = []
+
+    for raw_row in dataset:
+
+        stats["input"] += 1
+
+        row = normalize_row(
+            raw_row,
+            source="sharegpt_clean",
+        )
+
+        if row is None:
+            stats["invalid_or_empty"] += 1
+            continue
+
+        if not basic_quality_check(row):
+            stats["quality_rejected"] += 1
+            continue
+
+        rows.append(row)
+        stats["kept"] += 1
+
+    return rows, stats
+
+
+# ============================================================================
+# Load Trendyol
+# ============================================================================
+
+def load_trendyol() -> tuple[list[dict[str, str]], Counter]:
+
+    print()
+    print("=" * 80)
+    print("LOADING TRENDYOL")
+    print("=" * 80)
+    print(f"Dataset: {TRENDYOL_DATASET}")
+
+    dataset = load_dataset(
+        TRENDYOL_DATASET
+    )
+
+    if isinstance(dataset, DatasetDict):
+
+        if "train" in dataset:
+            dataset = dataset["train"]
+        else:
+            first_split = next(iter(dataset.keys()))
+            dataset = dataset[first_split]
+
+    stats = Counter()
+    rows: list[dict[str, str]] = []
+
+    for raw_row in dataset:
+
+        stats["input"] += 1
+
+        row = normalize_row(
+            raw_row,
+            source="trendyol",
+        )
+
+        if row is None:
+            stats["invalid_or_empty"] += 1
+            continue
+
+        if not basic_quality_check(row):
+            stats["quality_rejected"] += 1
+            continue
+
+        rows.append(row)
+        stats["kept"] += 1
+
+    return rows, stats
+
+
+# ============================================================================
+# Train / validation split
+# ============================================================================
+
+def split_dataset(
+    rows: list[dict[str, str]],
+    validation_ratio: float,
+    seed: int,
+) -> tuple[
+    list[dict[str, str]],
+    list[dict[str, str]],
+]:
+
+    if not 0.0 < validation_ratio < 1.0:
+        raise ValueError(
+            "validation_ratio must be between 0 and 1."
+        )
+
+    shuffled = list(rows)
+
+    rng = random.Random(seed)
+    rng.shuffle(shuffled)
+
+    validation_size = max(
+        1,
+        int(len(shuffled) * validation_ratio),
+    )
+
+    validation = shuffled[:validation_size]
+    train = shuffled[validation_size:]
+
+    return train, validation
+
+
+# ============================================================================
+# Leakage verification
+# ============================================================================
+
+def verify_no_overlap(
+    train: list[dict[str, str]],
+    validation: list[dict[str, str]],
+) -> int:
+
+    train_hashes = {
+        row_hash(row)
+        for row in train
+    }
+
+    validation_hashes = {
+        row_hash(row)
+        for row in validation
+    }
+
+    return len(train_hashes & validation_hashes)
+
+
+# ============================================================================
+# Statistics
+# ============================================================================
+
+def print_source_distribution(
+    name: str,
+    rows: list[dict[str, str]],
+) -> None:
+
+    counts = Counter(
+        row["source"]
+        for row in rows
+    )
+
+    print()
+    print("=" * 80)
+    print(name)
+    print("=" * 80)
+
+    print(f"Rows: {len(rows):,}")
+
+    for source, count in counts.most_common():
+
+        percentage = (
+            100.0 * count / max(1, len(rows))
+        )
+
+        print(
+            f"{source:20s}"
+            f"{count:10,d}"
+            f" ({percentage:6.2f}%)"
+        )
+
+
+def categorize(text: str) -> str:
+
+    text = text.lower()
+
+    categories = [
+        (
+            "network_security",
+            [
+                "network security",
+                "tcp",
+                "udp",
+                "dns",
+                "tls",
+                "firewall",
+                "packet",
+            ],
+        ),
+        (
+            "web_security",
+            [
+                "xss",
+                "csrf",
+                "idor",
+                "ssrf",
+                "sql injection",
+                "web application",
+            ],
+        ),
+        (
+            "identity_security",
+            [
+                "active directory",
+                "kerberos",
+                "ldap",
+                "oauth",
+                "identity",
+                "privilege",
+            ],
+        ),
+        (
+            "malware_analysis",
+            [
+                "malware",
+                "ransomware",
+                "rootkit",
+                "reverse engineering",
+                "yara",
+            ],
+        ),
+        (
+            "cryptography",
+            [
+                "cryptography",
+                "encryption",
+                "cipher",
+                "hashing",
+                "tls",
+            ],
+        ),
+        (
+            "secure_coding",
+            [
+                "secure coding",
+                "input validation",
+                "sanitization",
+                "secure software",
+            ],
+        ),
+        (
+            "threat_intelligence",
+            [
+                "threat intelligence",
+                "ioc",
+                "indicator of compromise",
+                "apt",
+            ],
+        ),
+        (
+            "incident_response",
+            [
+                "incident response",
+                "forensics",
+                "triage",
+                "containment",
+            ],
+        ),
+        (
+            "cloud_security",
+            [
+                "aws",
+                "azure",
+                "gcp",
+                "cloud security",
+                "kubernetes",
+            ],
+        ),
+        (
+            "offensive_security",
+            [
+                "penetration test",
+                "red team",
+                "exploit",
+                "rop",
+                "payload",
+            ],
+        ),
+        (
+            "social_engineering",
+            [
+                "phishing",
+                "social engineering",
+                "pretexting",
+            ],
+        ),
     ]
 
-    for category, terms in rules:
-        if any(term in t for term in terms):
+    for category, terms in categories:
+
+        if any(term in text for term in terms):
             return category
 
     return "other"
 
 
-# ---------------------------------------------------------------------------
-# Dataset processing
-# ---------------------------------------------------------------------------
+def print_category_distribution(
+    name: str,
+    rows: list[dict[str, str]],
+) -> None:
 
-def process_trendyol(path: str) -> tuple[list[dict[str, Any]], Counter]:
-    ds = load_dataset(path)
-    if isinstance(ds, DatasetDict):
-        ds = ds["train"]
-
-    stats = Counter()
-    output = []
-
-    for row in ds:
-        stats["input"] += 1
-
-        converted = convert_trendyol(row)
-        if converted is None:
-            stats["malformed_or_empty"] += 1
-            continue
-
-        system, user, assistant = converted
-
-        if not basic_quality_ok(system, user, assistant):
-            stats["quality_rejected"] += 1
-            continue
-
-        if looks_generic_programming(user, assistant):
-            stats["generic_programming_rejected"] += 1
-            continue
-
-        if operational_risk(user, assistant):
-            stats["operational_risk_rejected"] += 1
-            continue
-
-        output.append({
-            "system": system,
-            "user": user,
-            "assistant": assistant,
-            "source": "trendyol",
-        })
-        stats["kept"] += 1
-
-    return output, stats
-
-
-def process_sharegpt(path: str) -> tuple[list[dict[str, Any]], Counter]:
-    ds = load_dataset(path)
-    if isinstance(ds, DatasetDict):
-        # ShareGPT is commonly stored under train.
-        ds = ds["train"]
-
-    stats = Counter()
-    output = []
-
-    for row in ds:
-        stats["input"] += 1
-
-        converted = extract_sharegpt_turns(row.get("conversations"))
-        if converted is None:
-            stats["malformed_or_empty"] += 1
-            continue
-
-        system, user, assistant = converted
-
-        if not basic_quality_ok(system, user, assistant):
-            stats["quality_rejected"] += 1
-            continue
-
-        if looks_generic_programming(user, assistant):
-            stats["generic_programming_rejected"] += 1
-            continue
-
-        if operational_risk(user, assistant):
-            stats["operational_risk_rejected"] += 1
-            continue
-
-        output.append({
-            "system": system,
-            "user": user,
-            "assistant": assistant,
-            "source": "sharegpt",
-        })
-        stats["kept"] += 1
-
-    return output, stats
-
-
-def deduplicate(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
-    seen = set()
-    unique = []
-
-    for row in rows:
-        key = pair_hash(row["user"], row["assistant"])
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append(row)
-
-    return unique, len(rows) - len(unique)
-
-
-def split_rows(
-    rows: list[dict[str, Any]],
-    validation_ratio: float,
-    seed: int,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    rng = random.Random(seed)
-    shuffled = list(rows)
-    rng.shuffle(shuffled)
-
-    n_val = max(1, int(len(shuffled) * validation_ratio))
-    return shuffled[n_val:], shuffled[:n_val]
-
-
-def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    with path.open("w", encoding="utf-8") as f:
-        for row in rows:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-
-def print_stats(name: str, rows: list[dict[str, Any]]) -> None:
     counts = Counter(
-        categorize(f'{r["user"]}\n{r["assistant"]}')
-        for r in rows
+        categorize(
+            row["user"] + "\n" + row["assistant"]
+        )
+        for row in rows
     )
 
-    print(f"\n{'=' * 80}")
+    print()
+    print("=" * 80)
     print(name)
-    print(f"{'=' * 80}")
+    print("=" * 80)
+
     print(f"Rows: {len(rows):,}")
 
     for category, count in counts.most_common():
-        pct = 100 * count / max(1, len(rows))
-        print(f"{category:25s} {count:7,d} ({pct:6.2f}%)")
+
+        percentage = (
+            100.0 * count / max(1, len(rows))
+        )
+
+        print(
+            f"{category:25s}"
+            f"{count:10,d}"
+            f" ({percentage:6.2f}%)"
+        )
 
 
-# ---------------------------------------------------------------------------
+# ============================================================================
+# JSONL writer
+# ============================================================================
+
+def write_jsonl(
+    path: Path,
+    rows: list[dict[str, str]],
+) -> None:
+
+    path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    with path.open(
+        "w",
+        encoding="utf-8",
+    ) as file:
+
+        for row in rows:
+
+            file.write(
+                json.dumps(
+                    row,
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+
+
+# ============================================================================
 # Main
-# ---------------------------------------------------------------------------
+# ============================================================================
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "Combine ShareGPT train + validation with Trendyol, "
+            "deduplicate, and create a fresh train/validation split."
+        )
+    )
 
     parser.add_argument(
         "--output-dir",
@@ -479,6 +632,9 @@ def main() -> None:
         "--validation-ratio",
         type=float,
         default=0.02,
+        help=(
+            "Fraction of the final combined dataset used for validation."
+        ),
     )
 
     parser.add_argument(
@@ -489,90 +645,387 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    output_dir = Path(args.output_dir)
+
     print("=" * 80)
-    print("LOADING + CURATING DATASETS")
+    print("CYBERSECURITY DATASET MERGE + SPLIT")
     print("=" * 80)
 
-    print("\nLoading Trendyol:")
-    print(f"  {TRENDYOL}")
+    print("\nINPUTS")
+    print(
+        f"ShareGPT train      : {SHAREGPT_TRAIN_PATH}"
+    )
+    print(
+        f"ShareGPT validation : {SHAREGPT_VALIDATION_PATH}"
+    )
+    print(
+        f"Trendyol            : {TRENDYOL_DATASET}"
+    )
 
-    trendyol, trendyol_stats = process_trendyol(TRENDYOL)
+    # ------------------------------------------------------------------
+    # 1. Load ShareGPT train
+    # ------------------------------------------------------------------
 
-    print("\nLoading ShareGPT:")
-    print(f"  {SHAREGPT}")
+    sharegpt_train, sharegpt_train_stats = (
+        load_sharegpt_jsonl(
+            SHAREGPT_TRAIN_PATH,
+            "train",
+        )
+    )
 
-    sharegpt, sharegpt_stats = process_sharegpt(SHAREGPT)
+    # ------------------------------------------------------------------
+    # 2. Load ShareGPT validation
+    # ------------------------------------------------------------------
 
-    print("\nTRENDYOL")
-    for k, v in trendyol_stats.items():
-        print(f"{k:30s}: {v:,}")
+    sharegpt_validation, sharegpt_validation_stats = (
+        load_sharegpt_jsonl(
+            SHAREGPT_VALIDATION_PATH,
+            "validation",
+        )
+    )
 
-    print("\nSHAREGPT")
-    for k, v in sharegpt_stats.items():
-        print(f"{k:30s}: {v:,}")
+    # ------------------------------------------------------------------
+    # 3. Combine ShareGPT train + validation
+    # ------------------------------------------------------------------
 
-    merged = trendyol + sharegpt
+    sharegpt_all = (
+        sharegpt_train
+        + sharegpt_validation
+    )
 
-    before = len(merged)
-    merged, duplicate_count = deduplicate(merged)
+    print()
+    print("=" * 80)
+    print("COMBINED SHAREGPT")
+    print("=" * 80)
 
-    print("\nMERGE")
-    print(f"Before deduplication : {before:,}")
-    print(f"Duplicates removed   : {duplicate_count:,}")
-    print(f"Final rows           : {len(merged):,}")
+    print(
+        f"ShareGPT train      : {len(sharegpt_train):,}"
+    )
 
-    print_stats("FINAL DISTRIBUTION", merged)
+    print(
+        f"ShareGPT validation : {len(sharegpt_validation):,}"
+    )
 
-    train, validation = split_rows(
+    print(
+        f"ShareGPT total      : {len(sharegpt_all):,}"
+    )
+
+    # ------------------------------------------------------------------
+    # 4. Load Trendyol
+    # ------------------------------------------------------------------
+
+    trendyol, trendyol_stats = load_trendyol()
+
+    # ------------------------------------------------------------------
+    # 5. Combine ShareGPT + Trendyol
+    # ------------------------------------------------------------------
+
+    merged = (
+        sharegpt_all
+        + trendyol
+    )
+
+    merged_before_dedup = len(merged)
+
+    print()
+    print("=" * 80)
+    print("COMBINED DATASET BEFORE DEDUPLICATION")
+    print("=" * 80)
+
+    print(
+        f"ShareGPT : {len(sharegpt_all):,}"
+    )
+
+    print(
+        f"Trendyol : {len(trendyol):,}"
+    )
+
+    print(
+        f"Total    : {len(merged):,}"
+    )
+
+    # ------------------------------------------------------------------
+    # 6. Deduplicate entire combined pool
+    # ------------------------------------------------------------------
+
+    merged, duplicates_removed = (
+        deduplicate_rows(merged)
+    )
+
+    print()
+    print("=" * 80)
+    print("DEDUPLICATION")
+    print("=" * 80)
+
+    print(
+        f"Before : {merged_before_dedup:,}"
+    )
+
+    print(
+        f"Removed: {duplicates_removed:,}"
+    )
+
+    print(
+        f"After  : {len(merged):,}"
+    )
+
+    # ------------------------------------------------------------------
+    # 7. Fresh train/validation split
+    # ------------------------------------------------------------------
+
+    train, validation = split_dataset(
         merged,
         validation_ratio=args.validation_ratio,
         seed=args.seed,
     )
 
-    output_dir = Path(args.output_dir)
+    # ------------------------------------------------------------------
+    # 8. Verify no leakage
+    # ------------------------------------------------------------------
 
-    write_jsonl(output_dir / "train.jsonl", train)
-    write_jsonl(output_dir / "validation.jsonl", validation)
-    source_counts = Counter(row["source"] for row in merged)
+    overlap_count = verify_no_overlap(
+        train,
+        validation,
+    )
+
+    if overlap_count != 0:
+        raise RuntimeError(
+            "Train/validation leakage detected: "
+            f"{overlap_count} overlapping examples."
+        )
+
+    print()
+    print("=" * 80)
+    print("FINAL SPLIT")
+    print("=" * 80)
+
+    print(
+        f"Total      : {len(merged):,}"
+    )
+
+    print(
+        f"Train      : {len(train):,}"
+    )
+
+    print(
+        f"Validation : {len(validation):,}"
+    )
+
+    print(
+        f"Ratio      : {args.validation_ratio:.4f}"
+    )
+
+    print(
+        "Leakage    : 0"
+    )
+
+    # ------------------------------------------------------------------
+    # 9. Statistics
+    # ------------------------------------------------------------------
+
+    print_source_distribution(
+        "FINAL TRAIN SOURCE DISTRIBUTION",
+        train,
+    )
+
+    print_source_distribution(
+        "FINAL VALIDATION SOURCE DISTRIBUTION",
+        validation,
+    )
+
+    print_category_distribution(
+        "FINAL TRAIN CATEGORY DISTRIBUTION",
+        train,
+    )
+
+    print_category_distribution(
+        "FINAL VALIDATION CATEGORY DISTRIBUTION",
+        validation,
+    )
+
+    # ------------------------------------------------------------------
+    # 10. Output paths
+    # ------------------------------------------------------------------
+
+    train_path = (
+        output_dir
+        / "train.jsonl"
+    )
+
+    validation_path = (
+        output_dir
+        / "validation.jsonl"
+    )
+
+    metadata_path = (
+        output_dir
+        / "metadata.json"
+    )
+
+    # ------------------------------------------------------------------
+    # 11. Write datasets
+    # ------------------------------------------------------------------
+
+    write_jsonl(
+        train_path,
+        train,
+    )
+
+    write_jsonl(
+        validation_path,
+        validation,
+    )
+
+    # ------------------------------------------------------------------
+    # 12. Metadata
+    # ------------------------------------------------------------------
 
     metadata = {
-    "seed": args.seed,
-    "validation_ratio": args.validation_ratio,
+        "seed": args.seed,
 
-    "trendyol_input": TRENDYOL,
-    "sharegpt_input": SHAREGPT,
+        "validation_ratio": (
+            args.validation_ratio
+        ),
 
-    "trendyol_stats": dict(trendyol_stats),
-    "sharegpt_stats": dict(sharegpt_stats),
+        "inputs": {
+            "sharegpt_train": str(
+                SHAREGPT_TRAIN_PATH
+            ),
+            "sharegpt_validation": str(
+                SHAREGPT_VALIDATION_PATH
+            ),
+            "trendyol": TRENDYOL_DATASET,
+        },
 
-    "merged_before_dedup": before,
-    "duplicates_removed": duplicate_count,
-    "final_rows": len(merged),
-    "train_rows": len(train),
-    "validation_rows": len(validation),
+        "sharegpt": {
+            "train_input_rows": (
+                sharegpt_train_stats.get(
+                    "input",
+                    0,
+                )
+            ),
+            "train_kept_rows": len(
+                sharegpt_train
+            ),
+            "validation_input_rows": (
+                sharegpt_validation_stats.get(
+                    "input",
+                    0,
+                )
+            ),
+            "validation_kept_rows": len(
+                sharegpt_validation
+            ),
+            "combined_rows": len(
+                sharegpt_all
+            ),
+        },
 
-    "policy": {
-        "preserve_offensive_security_diversity": True,
-        "remove_structural_noise": True,
-        "remove_generic_programming_noise": True,
-        "remove_direct_operational_attack_examples": True,
-        "remove_sharegpt_meta_reasoning_prompt": True,
-    },
-}
+        "trendyol": {
+            "input_rows": (
+                trendyol_stats.get(
+                    "input",
+                    0,
+                )
+            ),
+            "kept_rows": len(
+                trendyol
+            ),
+        },
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-    with (output_dir / "metadata.json").open("w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2)
+        "merge": {
+            "rows_before_dedup": (
+                merged_before_dedup
+            ),
+            "duplicates_removed": (
+                duplicates_removed
+            ),
+            "rows_after_dedup": len(
+                merged
+            ),
+        },
 
-    print("\nOUTPUT")
-    print("\nFINAL SOURCE DISTRIBUTION")
-    for source, count in source_counts.most_common():
-        pct = 100 * count / max(1, len(merged))
-        print(f"{source:15s} {count:7,d} ({pct:6.2f}%)")
-    print(f"Train      : {output_dir / 'train.jsonl'}")
-    print(f"Validation : {output_dir / 'validation.jsonl'}")
-    print(f"Metadata   : {output_dir / 'metadata.json'}")
-    print("\nDONE")
+        "final_split": {
+            "train_rows": len(
+                train
+            ),
+            "validation_rows": len(
+                validation
+            ),
+            "validation_ratio": (
+                args.validation_ratio
+            ),
+            "train_validation_overlap": (
+                overlap_count
+            ),
+        },
+
+        "processing": {
+            "sharegpt_train_and_validation_combined": True,
+            "sharegpt_recleaned": False,
+            "trendyol_content_filtering": False,
+            "generic_programming_filtering": False,
+            "offensive_security_filtering": False,
+            "structural_validation": True,
+            "exact_deduplication": True,
+            "fresh_final_split": True,
+            "final_shuffle": True,
+        },
+    }
+
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    with metadata_path.open(
+        "w",
+        encoding="utf-8",
+    ) as file:
+
+        json.dump(
+            metadata,
+            file,
+            indent=2,
+            ensure_ascii=False,
+        )
+
+    # ------------------------------------------------------------------
+    # 13. Final summary
+    # ------------------------------------------------------------------
+
+    print()
+    print("=" * 80)
+    print("FINAL OUTPUT")
+    print("=" * 80)
+
+    print(
+        f"Train      : {train_path}"
+    )
+
+    print(
+        f"Validation : {validation_path}"
+    )
+
+    print(
+        f"Metadata   : {metadata_path}"
+    )
+
+    print()
+    print(
+        f"Final rows : {len(merged):,}"
+    )
+
+    print(
+        f"Train      : {len(train):,}"
+    )
+
+    print(
+        f"Validation : {len(validation):,}"
+    )
+
+    print()
+    print("DONE")
 
 
 if __name__ == "__main__":
