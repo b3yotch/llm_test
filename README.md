@@ -1,56 +1,56 @@
-\# LLM Quantization & Serving Experiment
+# LLM Quantization & Serving Experiment
 
-\## 1. Project Overview
+## 1. Project Overview
 
 This project is an end-to-end experiment for evaluating and deploying local Large Language Models (LLMs), with a primary focus on:
 
-\- Running models locally.
+- Running models locally.
 
-\- Moving from Ollama-based local inference to vLLM-based production-style serving.
+- Moving from Ollama-based local inference to vLLM-based production-style serving.
 
-\- Establishing an unquantized/original-model baseline.
+- Establishing an unquantized/original-model baseline.
 
-\- Quantizing the model using modern LLM quantization/compression methods.
+- Quantizing the model using modern LLM quantization/compression methods.
 
-\- Comparing original and quantized models on quality, memory usage, latency, and serving performance.
+- Comparing original and quantized models on quality, memory usage, latency, and serving performance.
 
-\- Eventually determining the best production trade-off for the available GPU.
+- Eventually determining the best production trade-off for the available GPU.
 
-The main model used so far is **\*\*Qwen3-4B\*\***.
+The main model used so far is **Qwen3-4B**.
 
-**\*\*Current phase:\*\*** completed fine-tune → merge → GPTQ quantization → vLLM evaluation. The final W8A16 GPTQ cybersecurity model has been successfully served and benchmarked.
+**Current phase:** completed fine-tune → merge → GPTQ quantization → vLLM evaluation. The final W8A16 GPTQ cybersecurity model has been successfully served and benchmarked.
 
-**---**
+---
 
-\## 2. Current Environment
+## 2. Current Environment
 
-\### Hardware
+### Hardware
 
-\- GPU: **\*\*NVIDIA GeForce RTX 4090\*\***
+- GPU: **NVIDIA GeForce RTX 4090**
 
-\- GPU capacity reported by PyTorch/vLLM: approximately **\*\*23.52 GiB\*\***
+- GPU capacity reported by PyTorch/vLLM: approximately **23.52 GiB**
 
-\- CUDA compute capability: **\*\*8.9 / SM89\*\***
+- CUDA compute capability: **8.9 / SM89**
 
 Verified with:
 
-\`\`\`bash
+```bash
 
 python -c "import torch; print(torch.cuda.get\_device\_capability(0))"
 
-\`\`\`
+```
 
 Output:
 
-\`\`\`text
+```text
 
 (8, 9)
 
-\`\`\`
+```
 
-\### Software
+### Software
 
-\`\`\`text
+```text
 
 Python: 3.12
 
@@ -62,27 +62,27 @@ vLLM: 0.26.0
 
 FlashInfer: 0.6.14
 
-\`\`\`
+```
 
 Project virtual environment:
 
-\`\`\`text
+```text
 
 /mnt/NewDisk/llm\_quant\_experiment/.venv
 
-\`\`\`
+```
 
 Project directory:
 
-\`\`\`text
+```text
 
 /mnt/NewDisk/llm\_quant\_experiment
 
-\`\`\`
+```
 
-System \`nvcc\` is currently:
+System `nvcc` is currently:
 
-\`\`\`text
+```text
 
 CUDA 12.0
 
@@ -90,47 +90,47 @@ V12.0.140
 
 /usr/bin/nvcc
 
-\`\`\`
+```
 
 This is different from the CUDA 13.0 runtime bundled with the installed PyTorch build and is an important detail for future compiler/extension troubleshooting.
 
-**---**
+---
 
-\## 3. Ollama → vLLM Migration
+## 3. Ollama → vLLM Migration
 
 Ollama was used for earlier local model execution.
 
-The project is now moving toward **\*\*vLLM for production-style serving\*\***.
+The project is now moving toward **vLLM for production-style serving**.
 
-\### Ollama
+### Ollama
 
 Useful for:
 
-\- Easy local model execution.
+- Easy local model execution.
 
-\- Rapid experimentation.
+- Rapid experimentation.
 
-\- Simple model management.
+- Simple model management.
 
-\### vLLM
+### vLLM
 
 The target serving engine because it provides:
 
-\- OpenAI-compatible APIs.
+- OpenAI-compatible APIs.
 
-\- Efficient GPU inference.
+- Efficient GPU inference.
 
-\- KV-cache management.
+- KV-cache management.
 
-\- CUDA graph execution.
+- CUDA graph execution.
 
-\- Optimized batching/serving behavior.
+- Optimized batching/serving behavior.
 
-\- A production-oriented inference server.
+- A production-oriented inference server.
 
 The current workflow is therefore:
 
-\`\`\`text
+```text
 
 Model
 
@@ -146,25 +146,25 @@ OpenAI-compatible HTTP API
 
 Application
 
-\`\`\`
+```
 
-**---**
+---
 
-\## 4. Model
+## 4. Model
 
 The original model remains the immutable baseline:
 
-\`\`\`text
+```text
 models/qwen3-4b-original
-\`\`\`
+```
 
 The completed experiment now also contains:
 
-\`\`\`text
+```text
 models/qwen3-4b-lora-r8/checkpoint-3469
 models/qwen3-4b-cybersecurity-lora-r8-merged
 models/gptq/qwen3-4b-cybersecurity-lora-r8-w8a16-gptq
-\`\`\`
+```
 
 Current model status:
 
@@ -179,63 +179,63 @@ Current model status:
 
 The original model remains untouched for all baseline comparisons.
 
-**---**
+---
 
-\## 5. Successful vLLM Serving
+## 5. Successful vLLM Serving
 
 The vLLM API server successfully reached:
 
-\`\`\`text
+```text
 
 APIServer INFO: Started server process
 
 APIServer INFO: Application startup complete.
 
-\`\`\`
+```
 
 The model endpoint was verified with:
 
-\`\`\`bash
+```bash
 
 curl http\://localhost:8000/v1/models
 
-\`\`\`
+```
 
 The returned model ID was:
 
-\`\`\`text
+```text
 
 models/qwen3-4b-original
 
-\`\`\`
+```
 
-\### Important model-ID lesson
+### Important model-ID lesson
 
-The model's \`id\` is the value that must be sent as:
+The model's `id` is the value that must be sent as:
 
-\`\`\`json
+```json
 
 "model": "models/qwen3-4b-original"
 
-\`\`\`
+```
 
-The \`permission[].id\` value is only a permission record identifier and must **\*\*not\*\*** be used as the model name.
+The `permission[].id` value is only a permission record identifier and must **not** be used as the model name.
 
-**---**
+---
 
-\## 6. Initial Chat Completion Test
+## 6. Initial Chat Completion Test
 
 A request was sent to:
 
-\`\`\`text
+```text
 
 http\://localhost:8000/v1/chat/completions
 
-\`\`\`
+```
 
 with:
 
-\`\`\`json
+```json
 
 {
 
@@ -259,41 +259,41 @@ with:
 
 }
 
-\`\`\`
+```
 
 The request successfully reached Qwen3.
 
 However, the model generated reasoning-style text such as:
 
-\`\`\`text
+```text
 
 Okay, the user is asking...
 
 First, I need to recall...
 
-\`\`\`
+```
 
 and consumed the full 80-token completion budget.
 
 The response ended with:
 
-\`\`\`text
+```text
 
 "finish\_reason": "length"
 
-\`\`\`
+```
 
 This showed that Qwen3 thinking/reasoning mode was active.
 
-**---**
+---
 
-\## 7. Disabling Qwen3 Thinking
+## 7. Disabling Qwen3 Thinking
 
-The project requirement is to use Qwen3 **\*\*without thinking/reasoning output\*\*** for the intended workload.
+The project requirement is to use Qwen3 **without thinking/reasoning output** for the intended workload.
 
 An attempt was made to use:
 
-\`\`\`json
+```json
 
 "extra\_body": {
 
@@ -305,15 +305,15 @@ An attempt was made to use:
 
 }
 
-\`\`\`
+```
 
 but the observed response still contained reasoning-style generation.
 
-The Qwen3 \`/no\_think\` switch was then tested and **\*\*worked successfully\*\***.
+The Qwen3 `/no\_think` switch was then tested and **worked successfully**.
 
 Example:
 
-\`\`\`json
+```json
 
 {
 
@@ -337,15 +337,15 @@ Example:
 
 }
 
-\`\`\`
+```
 
-\### Current approach
+### Current approach
 
-For the current workload, \`/no\_think\` should be included in the application/message construction layer.
+For the current workload, `/no\_think` should be included in the application/message construction layer.
 
 For example:
 
-\`\`\`python
+```python
 
 messages = [
 
@@ -359,135 +359,135 @@ messages = [
 
 ]
 
-\`\`\`
+```
 
 This should be used consistently during benchmarks so that original and quantized models are evaluated under the same generation behavior.
 
-**---**
+---
 
-\## 8. FlashInfer / CUDA Startup Investigation
+## 8. FlashInfer / CUDA Startup Investigation
 
 There was initially a vLLM startup failure involving FlashInfer JIT compilation.
 
 The error included:
 
-\`\`\`text
+```text
 
 EngineCore failed to start
 
-\`\`\`
+```
 
 and a failed Ninja command for FlashInfer's sampling extension.
 
 Another important error was:
 
-\`\`\`text
+```text
 
 No supported CUDA architectures found for major versions [9, 10, 11, 12].
 
-\`\`\`
+```
 
-\### GPU architecture
+### GPU architecture
 
 The RTX 4090 reports:
 
-\`\`\`text
+```text
 
 (8, 9)
 
-\`\`\`
+```
 
 which is SM89.
 
 The environment was configured with:
 
-\`\`\`text
+```text
 
 FLASHINFER\_CUDA\_ARCH\_LIST=8.9
 
-\`\`\`
+```
 
 and:
 
-\`\`\`text
+```text
 
 FLASHINFER\_JIT\_VERBOSE=1
 
-\`\`\`
+```
 
-\### FlashInfer version
+### FlashInfer version
 
-\`\`\`text
+```text
 
 flashinfer-python 0.6.14
 
-\`\`\`
+```
 
 Package location:
 
-\`\`\`text
+```text
 
 /mnt/NewDisk/llm\_quant\_experiment/.venv/lib/python3.12/site-packages/flashinfer
 
-\`\`\`
+```
 
-\### Relevant FlashInfer architecture behavior
+### Relevant FlashInfer architecture behavior
 
-The installed \`CompilationContext\` normalizes architectures roughly as follows:
+The installed `CompilationContext` normalizes architectures roughly as follows:
 
-\- SM9.x → suffix \`a\`
+- SM9.x → suffix `a`
 
-\- SM12.x → architecture-specific suffixes
+- SM12.x → architecture-specific suffixes
 
-\- SM10+ → suffix \`a\`
+- SM10+ → suffix `a`
 
-\- SM < 9 → no suffix
+- SM < 9 → no suffix
 
 Therefore SM89 is represented as:
 
-\`\`\`text
+```text
 
 8.9
 
-\`\`\`
+```
 
 Several FlashInfer components explicitly request:
 
-\`\`\`python
+```python
 
 supported\_major\_versions=[9, 10, 11, 12]
 
-\`\`\`
+```
 
 Those components are intended for SM90+ and can reject an SM89 GPU.
 
-Despite the initial issue, the vLLM server subsequently started successfully, so this is **\*\*not currently blocking model serving\*\***.
+Despite the initial issue, the vLLM server subsequently started successfully, so this is **not currently blocking model serving**.
 
-**---**
+---
 
-\## 9. CUDA Graph Capture
+## 9. CUDA Graph Capture
 
 Successful vLLM initialization included:
 
-\`\`\`text
+```text
 
 Capturing CUDA graphs (FULL): 100%|██████████| 35/35
 
-\`\`\`
+```
 
 followed by:
 
-\`\`\`text
+```text
 
 Graph capturing finished in 3 secs, took 0.60 GiB
 
-\`\`\`
+```
 
 This confirms that the engine successfully reached CUDA graph initialization.
 
 A memory report during initialization showed approximately:
 
-\`\`\`text
+```text
 
 Free memory: 16.58 / 23.52 GiB
 
@@ -503,15 +503,15 @@ CUDA graph memory: 0.60 GiB
 
 KV-cache memory in use: 7.48 GiB
 
-\`\`\`
+```
 
 These numbers are useful as an initial serving baseline, although they should be re-measured systematically during benchmarking.
 
-**---**
+---
 
-\## 10. Current Serving Architecture
+## 10. Current Serving Architecture
 
-\`\`\`text
+```text
 
                     Qwen3-4B Original
 
@@ -547,11 +547,11 @@ These numbers are useful as an initial serving baseline, although they should be
 
        /v1/models              /v1/chat/completions
 
-\`\`\`
+```
 
 Application-side architecture:
 
-\`\`\`text
+```text
 
 Application
 
@@ -569,11 +569,11 @@ vLLM
 
 Qwen3-4B
 
-\`\`\`
+```
 
-**---**
+---
 
-\## 11. Port Conflicts
+## 11. Port Conflicts
 
 A later vLLM startup attempt reported that the address was already in use.
 
@@ -581,159 +581,159 @@ This is normally a port conflict, especially if an existing vLLM server is alrea
 
 Check:
 
-\`\`\`bash
+```bash
 
 sudo lsof -i :8000
 
-\`\`\`
+```
 
 or:
 
-\`\`\`bash
+```bash
 
 sudo ss -ltnp | grep :8000
 
-\`\`\`
+```
 
 If the existing process is the previous vLLM server, stop it using its PID:
 
-\`\`\`bash
+```bash
 
 kill \<PID>
 
-\`\`\`
+```
 
 If necessary:
 
-\`\`\`bash
+```bash
 
 kill -9 \<PID>
 
-\`\`\`
+```
 
 Alternatively, use another port:
 
-\`\`\`bash
+```bash
 
 vllm serve models/qwen3-4b-original --port 8001
 
-\`\`\`
+```
 
 Then the API becomes:
 
-\`\`\`text
+```text
 
 http\://localhost:8001/v1
 
-\`\`\`
+```
 
-**---**
+---
 
-\## 12. Ollama GPU Processes
+## 12. Ollama GPU Processes
 
-At one point \`nvidia-smi\` showed two Ollama processes:
+At one point `nvidia-smi` showed two Ollama processes:
 
-\`\`\`text
+```text
 
 /usr/local/bin/ollama   PID 946199   \~1630 MiB
 
 /usr/local/bin/ollama   PID 967238   \~13636 MiB
 
-\`\`\`
+```
 
 Together these consumed approximately:
 
-\`\`\`text
+```text
 
 15.2 GiB VRAM
 
-\`\`\`
+```
 
 Before running vLLM, GPU memory should therefore be checked with:
 
-\`\`\`bash
+```bash
 
 nvidia-smi
 
-\`\`\`
+```
 
 The process ownership can be checked with:
 
-\`\`\`bash
+```bash
 
 ps -fp 946199
 
 ps -fp 967238
 
-\`\`\`
+```
 
 If these are no longer needed:
 
-\`\`\`bash
+```bash
 
 kill 946199 967238
 
-\`\`\`
+```
 
 or, if required:
 
-\`\`\`bash
+```bash
 
 kill -9 946199 967238
 
-\`\`\`
+```
 
 If Ollama is running as a system service:
 
-\`\`\`bash
+```bash
 
 sudo systemctl stop ollama
 
-\`\`\`
+```
 
 Then verify:
 
-\`\`\`bash
+```bash
 
 nvidia-smi
 
-\`\`\`
+```
 
 Note that GPU memory usage and port conflicts are separate problems: an Ollama process can consume GPU memory without necessarily owning port 8000.
 
-**---**
+---
 
-\# 13. Quantization Phase
+# 13. Quantization Phase
 
-Quantization is the **\*\*next major phase\*\***.
+Quantization is the **next major phase**.
 
 The goal is to create one or more quantized versions of Qwen3-4B and compare them against the original model.
 
 Candidate approaches discussed so far include:
 
-\- LLM Compressor.
+- LLM Compressor.
 
-\- GPTQ.
+- GPTQ.
 
-\- AWQ.
+- AWQ.
 
-\- Other vLLM-supported quantization formats.
+- Other vLLM-supported quantization formats.
 
 LLM Compressor is being considered as a deployment-oriented compression/quantization tool, particularly for workflows involving calibration.
 
-**---**
+---
 
-\## 14. Quantization vs Fine-Tuning
+## 14. Quantization vs Fine-Tuning
 
 These are separate operations.
 
-\### Quantization
+### Quantization
 
 Quantization changes the numerical representation of model parameters and/or activations.
 
 Conceptually:
 
-\`\`\`text
+```text
 
 BF16 / FP16
 
@@ -741,45 +741,45 @@ BF16 / FP16
 
  INT8 / INT4
 
-\`\`\`
+```
 
 Typical goals:
 
-\- Reduce memory footprint.
+- Reduce memory footprint.
 
-\- Reduce model storage.
+- Reduce model storage.
 
-\- Improve inference efficiency where supported.
+- Improve inference efficiency where supported.
 
-\- Preserve as much model quality as possible.
+- Preserve as much model quality as possible.
 
-\### Fine-tuning
+### Fine-tuning
 
 Fine-tuning changes model parameters using training data.
 
 Examples:
 
-\- Full fine-tuning.
+- Full fine-tuning.
 
-\- LoRA.
+- LoRA.
 
-\- QLoRA.
+- QLoRA.
 
 Fine-tuning is primarily about changing/adapting model behavior.
 
-\### Current status
+### Current status
 
 Fine-tuning and quantization are now complete for the current experiment. The LoRA adapter was trained on the combined cybersecurity SFT dataset, merged into the base model, then quantized with GPTQ W8A16 using WikiText-2 calibration. The quantized model was subsequently served through vLLM and evaluated for perplexity, LM-eval performance, serving latency/throughput, and cybersecurity response quality.
 
-**---**
+---
 
-\# 15. Baseline Benchmarking
+# 15. Baseline Benchmarking
 
 Before quantization, the original model should be benchmarked.
 
 The baseline should record:
 
-\`\`\`text
+```text
 
 Original Qwen3-4B
 
@@ -799,57 +799,57 @@ Original Qwen3-4B
 
         +--> Concurrency
 
-\`\`\`
+```
 
 This baseline becomes the reference for all later quantized models.
 
-**---**
+---
 
-\## 16. Evaluation and Benchmarking Tools
+## 16. Evaluation and Benchmarking Tools
 
-\### LM Evaluation Harness
+### LM Evaluation Harness
 
-\`lm-eval\` is intended for standardized model-quality evaluation.
+`lm-eval` is intended for standardized model-quality evaluation.
 
 It can be used for benchmark tasks such as:
 
-\- ARC.
+- ARC.
 
-\- Other academic/general-knowledge benchmarks.
+- Other academic/general-knowledge benchmarks.
 
-\- Accuracy-based evaluations.
+- Accuracy-based evaluations.
 
 Quality benchmarking should be run consistently between the original and quantized models.
 
-\### Serving benchmarks
+### Serving benchmarks
 
 vLLM serving should additionally be evaluated using operational metrics such as:
 
-\- Time to First Token (TTFT).
+- Time to First Token (TTFT).
 
-\- End-to-end latency.
+- End-to-end latency.
 
-\- Inter-token latency.
+- Inter-token latency.
 
-\- Output tokens/second.
+- Output tokens/second.
 
-\- Requests/second.
+- Requests/second.
 
-\- GPU memory.
+- GPU memory.
 
-\- KV-cache usage.
+- KV-cache usage.
 
-\- Concurrent request capacity.
+- Concurrent request capacity.
 
 Model quality and serving performance should be treated as separate dimensions.
 
-**---**
+---
 
-\# 17. Experimental Design
+# 17. Experimental Design
 
 The recommended experiment is:
 
-\`\`\`text
+```text
 
                     ORIGINAL MODEL
 
@@ -901,13 +901,13 @@ The recommended experiment is:
 
                          Compare to baseline
 
-\`\`\`
+```
 
 The original model should not be overwritten.
 
 Suggested structure:
 
-\`\`\`text
+```text
 
 models/
 
@@ -915,39 +915,39 @@ models/
 
 └── qwen3-4b-quantized/
 
-\`\`\`
+```
 
-**---**
+---
 
-\# 18. Variables to Keep Constant
+# 18. Variables to Keep Constant
 
 For valid comparisons, keep as many conditions identical as possible.
 
-\### Model
+### Model
 
 Use the same base Qwen3-4B model.
 
-\### Prompt set
+### Prompt set
 
 Use identical prompts.
 
-\### Thinking mode
+### Thinking mode
 
 Use:
 
-\`\`\`text
+```text
 
 /no\_think
 
-\`\`\`
+```
 
 consistently if the production workload disables reasoning.
 
-\### Generation parameters
+### Generation parameters
 
 Keep parameters consistent, for example:
 
-\`\`\`text
+```text
 
 temperature
 
@@ -957,67 +957,67 @@ top\_k
 
 max\_tokens
 
-\`\`\`
+```
 
-\### Hardware
+### Hardware
 
 Use the same RTX 4090.
 
-\### vLLM version
+### vLLM version
 
 Keep vLLM fixed for a given comparison.
 
-\### Context length
+### Context length
 
 Keep context settings consistent unless context-length scaling is itself the experiment.
 
-\### Concurrency
+### Concurrency
 
 Use the same concurrency levels.
 
-**---**
+---
 
-\# 19. Metrics to Record
+# 19. Metrics to Record
 
 For each model version:
 
-\| Category | Metric |
+| Category | Metric |
 
-\|---|---|
+|---|---|
 
-\| Model | Model/version |
+| Model | Model/version |
 
-\| Precision | BF16/FP16/INT8/INT4/etc. |
+| Precision | BF16/FP16/INT8/INT4/etc. |
 
-\| Quantization method | Method used |
+| Quantization method | Method used |
 
-\| Model disk size | GB |
+| Model disk size | GB |
 
-\| GPU | RTX 4090 |
+| GPU | RTX 4090 |
 
-\| Peak VRAM | GiB |
+| Peak VRAM | GiB |
 
-\| KV cache | Capacity/usage |
+| KV cache | Capacity/usage |
 
-\| TTFT | ms |
+| TTFT | ms |
 
-\| End-to-end latency | ms |
+| End-to-end latency | ms |
 
-\| Output throughput | tokens/sec |
+| Output throughput | tokens/sec |
 
-\| Request throughput | requests/sec |
+| Request throughput | requests/sec |
 
-\| Concurrency | Tested concurrency |
+| Concurrency | Tested concurrency |
 
-\| Quality | LM-eval metrics |
+| Quality | LM-eval metrics |
 
-\| Thinking | Enabled/disabled |
+| Thinking | Enabled/disabled |
 
-\| Context | Tested context length |
+| Context | Tested context length |
 
-**---**
+---
 
-\# 20. Current Project Status
+# 20. Current Project Status
 
 ## Completed
 
@@ -1063,7 +1063,7 @@ For each model version:
 - [ ] Optional AWQ comparison on the merged cybersecurity model.
 - [ ] Final production hardening, monitoring, and deployment configuration.
 
-**---**
+---
 
 # 21. Experimental Progress
 
@@ -1093,7 +1093,7 @@ The main production candidate is now:
 models/gptq/qwen3-4b-cybersecurity-lora-r8-w8a16-gptq
 ```
 
-**---**
+---
 
 # 22. Final Goal and Current Conclusion
 
@@ -1128,7 +1128,7 @@ The LM-eval scores were effectively unchanged within the reported uncertainty, a
 
 **Current conclusion:** the main end-to-end experiment is complete. Remaining work is optional production hardening rather than another required training or quantization stage.
 
-**---**
+---
 # 23. Cybersecurity Fine-Tuning Phase
 
 The project was extended from pure quantization/serving into a domain-specialization experiment for cybersecurity.
