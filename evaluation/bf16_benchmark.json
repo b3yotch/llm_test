@@ -1,0 +1,101 @@
+{
+  "model": "models/qwen3-4b-cybersecurity-lora-r8-merged",
+  "num_prompts": 10,
+  "mean_latency_seconds": 2.010147468012292,
+  "median_latency_seconds": 2.354599552054424,
+  "mean_generation_tokens_per_second": 104.02050351243932,
+  "total_completion_tokens": 2095,
+  "total_elapsed_seconds": 20.10147468012292,
+  "results": [
+    {
+      "prompt": "What is PagedAttention in one sentence?",
+      "elapsed_seconds": 0.710401200922206,
+      "prompt_tokens": 21,
+      "completion_tokens": 73,
+      "total_tokens": 94,
+      "tokens_per_second": 102.75883529649892,
+      "response": "<think>\n\n</think>\n\nPagedAttention is a technique used in natural language processing (NLP) to improve the efficiency and effectiveness of attention mechanisms by dividing the input into smaller, manageable chunks called pages. This approach allows the model to focus on relevant information within each page, reducing computational overhead while maintaining the ability to capture long-range dependencies across the entire input sequence."
+    },
+    {
+      "prompt": "Explain the difference between stateful and stateless firewalls.",
+      "elapsed_seconds": 1.9795412759995088,
+      "prompt_tokens": 25,
+      "completion_tokens": 206,
+      "total_tokens": 231,
+      "tokens_per_second": 104.06451358079745,
+      "response": "<think>\n\n</think>\n\nStateful and stateless firewalls are two different approaches to network security that determine how they handle and analyze traffic. Stateful firewalls are more advanced and provide better protection by keeping track of the context of each connection, while stateless firewalls are simpler but less effective at detecting malicious activity. Stateful firewalls use a database to store information about active connections, allowing them to make decisions based on the current state of a session. This enables them to detect anomalies such as unexpected data flows or unusual patterns in traffic that could indicate an attack. Stateless firewalls, on the other hand, do not maintain any connection state information and rely solely on predefined rules to determine whether to allow or block traffic. They are less effective at detecting sophisticated attacks because they cannot track the context of a session. In summary, stateful firewalls offer better security by analyzing traffic in real-time and making decisions based on the current state of connections, while stateless firewalls are simpler but less effective at detecting malicious activity."
+    },
+    {
+      "prompt": "What is the principle of least privilege in cloud environments?",
+      "elapsed_seconds": 0.670482837012969,
+      "prompt_tokens": 23,
+      "completion_tokens": 69,
+      "total_tokens": 92,
+      "tokens_per_second": 102.91091164599841,
+      "response": "<think>\n\n</think>\n\nThe principle of least privilege in cloud environments is a fundamental security concept that dictates that users, processes, and systems should have only the minimum level of access necessary to perform their intended functions. This principle is crucial for maintaining the integrity, confidentiality, and availability of cloud resources by minimizing the potential impact of unauthorized or malicious activities."
+    },
+    {
+      "prompt": "Explain how Kerberos authentication works in Active Directory.",
+      "elapsed_seconds": 2.4570913180941716,
+      "prompt_tokens": 23,
+      "completion_tokens": 256,
+      "total_tokens": 279,
+      "tokens_per_second": 104.18823188002833,
+      "response": "<think>\n\n</think>\n\nKerberos is a network authentication protocol that allows users and services to securely authenticate to each other over an unsecured network. It was developed by MIT in the 1980s and is now widely used in Windows environments, including Active Directory. The main goal of Kerberos is to provide secure authentication without requiring passwords to be transmitted over the network. Instead, it uses a ticket-based system that allows users to authenticate once and then reuse their credentials for multiple services. This reduces the risk of password exposure and makes it more difficult for attackers to compromise user accounts. In Active Directory, Kerberos is used to authenticate users and services within the domain. When a user logs in, they receive a ticket from the Key Distribution Center (KDC), which is then used to access resources on the network. The KDC issues tickets that are valid for a specific time period and can be used by any service in the domain. This allows users to authenticate once and then access multiple services without re-entering their credentials. Kerberos also provides mutual authentication, meaning that both the client and server can verify each other’s identity. This is important in environments where security is a concern, as it ensures that only authorized users and services can access resources. Overall, Kerberos"
+    },
+    {
+      "prompt": "What is the difference between symmetric and asymmetric encryption?",
+      "elapsed_seconds": 2.450253629940562,
+      "prompt_tokens": 22,
+      "completion_tokens": 256,
+      "total_tokens": 278,
+      "tokens_per_second": 104.47898000102546,
+      "response": "<think>\n\n</think>\n\nAsymmetric encryption is a type of encryption that uses a pair of keys, one public and one private, to encrypt and decrypt data. The public key can be freely shared with anyone, while the private key must remain secret. When someone wants to send an encrypted message to you, they use your public key to encrypt it. Only your private key can then be used to decrypt the message. This method is often used for secure communications over unsecured networks, such as the internet. It also allows for digital signatures, which ensure that a message has not been altered and comes from a trusted source. Asymmetric encryption is computationally more expensive than symmetric encryption, so it is typically used to encrypt small amounts of data or to securely exchange keys for symmetric encryption. Common algorithms include RSA, ECC (Elliptic Curve Cryptography), and Diffie-Hellman. Symmetric encryption uses only one key for both encryption and decryption. This key must be kept secret by both the sender and receiver. Because it is faster than asymmetric encryption, it is often used to encrypt large amounts of data once a secure channel has been established using asymmetric methods. Common algorithms include AES (Advanced Encryption Standard), DES (Data Encryption Standard), and Blowfish. The main advantage of symmetric encryption"
+    },
+    {
+      "prompt": "What is an SQL injection vulnerability and how can parameterized queries prevent it?",
+      "elapsed_seconds": 2.450980492052622,
+      "prompt_tokens": 27,
+      "completion_tokens": 256,
+      "total_tokens": 283,
+      "tokens_per_second": 104.44799574296397,
+      "response": "<think>\n\n</think>\n\nSQL injection is a type of attack where an attacker manipulates the input to a web application in order to execute arbitrary SQL code on the database. This can lead to unauthorized access, data theft, or even complete system compromise. The vulnerability arises when user input is not properly sanitized before being used in SQL queries. For example, if a web form allows users to enter their name and the application directly uses that input in an SQL query without validation, an attacker could inject malicious SQL code into the input field. This could result in commands like 'DROP TABLE users;' or 'SELECT * FROM users WHERE username = 'admin'' AND '1'='1'--' being executed, effectively bypassing authentication checks. Parameterized queries, also known as prepared statements, are a secure way to handle user input in SQL queries. Instead of concatenating user input directly into the SQL string, parameterized queries use placeholders for the data and pass the actual values separately. This ensures that any special characters in the input are treated as literal data rather than executable code. For instance, an attacker's malicious input would be passed as a parameter to the query, which is then safely executed by the database engine. By using parameterized queries, developers can prevent SQL injection attacks and ensure"
+    },
+    {
+      "prompt": "What is the difference between an IOC and a TTP in threat intelligence?",
+      "elapsed_seconds": 2.259673768072389,
+      "prompt_tokens": 27,
+      "completion_tokens": 236,
+      "total_tokens": 263,
+      "tokens_per_second": 104.43985469695451,
+      "response": "<think>\n\n</think>\n\nIOC stands for Indicator of Compromise, which is a piece of data that can be used to identify a malicious activity. It could be an IP address, domain name, file hash, or any other piece of information that is known to be associated with a particular threat actor or malware. TTP stands for Tactics, Techniques and Procedures, which refers to the methods and behaviors used by threat actors to carry out their attacks. TTPs are more general than IOCs and can include things like phishing emails, malware deployment, and data exfiltration. While IOCs are specific pieces of data that can be used to detect an attack, TTPs provide a broader understanding of how attackers operate. Together, IOCs and TTPs help security teams to identify and respond to threats more effectively. They allow for the development of targeted defenses and incident response plans based on the specific tactics and techniques used by threat actors. By combining both IOCs and TTPs, organizations can gain a comprehensive view of their threat landscape and take proactive steps to protect against future attacks. This approach is essential in today’s rapidly evolving cybersecurity environment, where new threats emerge constantly."
+    },
+    {
+      "prompt": "Describe the main phases of incident response.",
+      "elapsed_seconds": 2.217317308066413,
+      "prompt_tokens": 20,
+      "completion_tokens": 231,
+      "total_tokens": 251,
+      "tokens_per_second": 104.1799471639181,
+      "response": "<think>\n\n</think>\n\nIncident response is a structured process for managing and mitigating the impact of security incidents. It typically consists of several key phases, each designed to address specific aspects of an incident from detection to recovery. The main phases are: 1) Preparation: This phase involves developing incident response plans, training personnel, and ensuring that necessary tools and resources are available. 2) Detection and Analysis: During this phase, security teams monitor systems for signs of an incident and analyze the data to determine its scope and severity. 3) Containment: Once an incident is confirmed, containment efforts are initiated to prevent further damage. This may involve isolating affected systems or networks. 4) Eradication: The goal of this phase is to eliminate the root cause of the incident and prevent future occurrences. 5) Recovery: After eradication, systems are restored to normal operation while ensuring that vulnerabilities have been addressed. 6) Lessons Learned: Finally, a thorough review is conducted to identify improvements in the incident response process. Each phase is critical for effective management of security incidents and minimizing their impact on an organization’s operations and reputation."
+    },
+    {
+      "prompt": "What is the difference between static and dynamic malware analysis?",
+      "elapsed_seconds": 2.4562075139256194,
+      "prompt_tokens": 23,
+      "completion_tokens": 256,
+      "total_tokens": 279,
+      "tokens_per_second": 104.22572138086554,
+      "response": "<think>\n\n</think>\n\nStatic and dynamic malware analysis are two complementary approaches used to understand and evaluate malicious software. While both aim to identify threats, they differ significantly in methodology, tools, and the information they provide.\\n\\n**Static Analysis** involves examining malware without executing it. This approach focuses on analyzing the code's structure, instructions, and data structures to identify malicious characteristics. Static analysis tools decompile or disassemble binaries, examining strings, API calls, and control flow graphs. Advantages include non-intrusive examination and the ability to analyze malware in a controlled environment. However, static analysis may miss runtime behaviors and can be limited by obfuscation techniques used by sophisticated malware authors.\\n\\n**Dynamic Analysis** involves executing malware in a controlled environment to observe its behavior. This approach uses sandboxing or virtual machines to monitor system calls, network traffic, file modifications, and other runtime activities. Dynamic analysis provides insights into how malware interacts with the host system, identifies command-and-control communications, and reveals polymorphic or metamorphic behaviors that static analysis might miss. However, dynamic analysis can be resource-intensive and may require sophisticated monitoring tools to capture all relevant data.\\n\\n**Key Differences:**\\n- **Execution**: Static analysis does not execute malware; dynamic analysis does.\\"
+    },
+    {
+      "prompt": "Explain the difference between vulnerability scanning and penetration testing.",
+      "elapsed_seconds": 2.4495253360364586,
+      "prompt_tokens": 23,
+      "completion_tokens": 256,
+      "total_tokens": 279,
+      "tokens_per_second": 104.51004373534258,
+      "response": "<think>\n\n</think>\n\nVulnerability scanning and penetration testing are both critical components of a comprehensive security assessment, yet they serve distinct purposes and methodologies within the cybersecurity landscape. Understanding their differences is essential for organizations seeking to effectively identify and mitigate security risks.\\n\\n**Vulnerability Scanning:**\\n\\nVulnerability scanning involves the automated detection of known vulnerabilities in systems, networks, and applications. This process typically employs tools that scan for weaknesses such as outdated software versions, misconfigurations, or exposed services. The primary objective is to identify potential security gaps that could be exploited by attackers. Scans are usually performed regularly to maintain an updated inventory of vulnerabilities and prioritize remediation efforts based on risk levels. Vulnerability scanners operate by comparing system configurations against known vulnerability databases, such as the National Vulnerability Database (NVD), and generating reports highlighting identified issues.\\n\\n**Penetration Testing:**\\n\\nPenetration testing, often referred to as pen testing, is a more advanced and manual process where ethical hackers attempt to exploit identified vulnerabilities to gain unauthorized access to systems or data. Unlike scanning, which focuses on detection, penetration testing evaluates the effectiveness of security controls by simulating real-world attack scenarios. This process involves reconnaissance, exploitation, and post-exploitation activities to"
+    }
+  ]
+}
